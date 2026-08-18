@@ -1770,6 +1770,100 @@ async def admin_products(
 
     await call.answer()
 
+# =========================================================
+# ADMIN — PRODUCT ON / OFF
+# =========================================================
+
+@dp.callback_query(
+    F.data == "admin:toggle_products"
+)
+async def admin_toggle_products(
+    call: CallbackQuery,
+):
+
+    if not is_admin(call.from_user.id):
+        return
+
+    products = await db.get_products()
+
+    if not products:
+        await call.answer(
+            "No products available.",
+            show_alert=True,
+        )
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=(
+                        "🟢 " if product["active"]
+                        else "🔴 "
+                    ) + product["name"],
+                    callback_data=(
+                        f"toggle_product:{product['id']}"
+                    ),
+                )
+            ]
+            for product in products
+        ]
+    )
+
+    await call.message.answer(
+        "🔄 <b>PRODUCT ON / OFF</b>\n\n"
+        "🟢 ON = Product active\n"
+        "🔴 OFF = Product disabled\n\n"
+        "Tap a product 👇",
+        reply_markup=keyboard,
+    )
+
+    await call.answer()
+
+
+@dp.callback_query(
+    F.data.startswith("toggle_product:")
+)
+async def toggle_product(
+    call: CallbackQuery,
+):
+
+    if not is_admin(call.from_user.id):
+        return
+
+    product_id = int(
+        call.data.split(":")[1]
+    )
+
+    product = await db.get_product(
+        product_id
+    )
+
+    if not product:
+        await call.answer(
+            "❌ Product not found.",
+            show_alert=True,
+        )
+        return
+
+    new_status = not product["active"]
+
+    success = await db.set_product_status(
+        product_id,
+        new_status,
+    )
+
+    if not success:
+        await call.answer(
+            "❌ Could not update product.",
+            show_alert=True,
+        )
+        return
+
+    await call.answer(
+        f"{product['name']} → "
+        f"{'🟢 ON' if new_status else '🔴 OFF'}"
+    )
 
 # =========================================================
 # ADMIN — PENDING PAYMENTS
