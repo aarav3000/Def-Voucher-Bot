@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import logging
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -13,17 +14,14 @@ from telegram.ext import (
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# --- CONFIGURATION (Railway Variables se aayega) ---
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "123456789"))
-UPI_ID = os.getenv("UPI_ID", "yourname@upi")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0") or "0")
+UPI_ID = os.getenv("UPI_ID", "")
 
-# Mandatory Force Join Channels Username (without @)
 REQUIRED_CHANNELS = ["Dailynewloots235", "shein577"]
 
-# Database Setup
 def init_db():
-    conn = sqlite3.connect("store.db")
+    conn = sqlite3.connect("/tmp/store.db")
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS products (
@@ -47,7 +45,6 @@ def init_db():
 
 init_db()
 
-# --- FORCE JOIN CHECKER ---
 async def check_force_join(user_id, context):
     for channel in REQUIRED_CHANNELS:
         try:
@@ -58,7 +55,6 @@ async def check_force_join(user_id, context):
             return False
     return True
 
-# --- 1. /START COMMAND ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     is_joined = await check_force_join(user_id, context)
@@ -70,15 +66,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buttons.append([InlineKeyboardButton("❤️ I've Joined — Verify", callback_data="verify_join")])
         
         await update.message.reply_text(
-            f"🐮 **Welcome to Voucher Shop Bot!**\n\n"
-            f"Join compulsory channels to continue.\n"
-            f"After joining, tap **Verify** below.",
+            f"🐮 **Welcome to Voucher Shop Bot!**\n\nJoin compulsory channels to continue.\nAfter joining, tap **Verify** below.",
             reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode="Markdown"
         )
         return
 
-    # Bottom Permanent Menu (Reply Keyboard)
     reply_keyboard = [
         ["🧠 Buy Vouchers", "🎒 My Orders"],
         ["💥 Recover Vouchers", "🌟 Support"],
@@ -92,7 +85,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# Verification Button Callback
 async def verify_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -113,9 +105,7 @@ async def verify_join_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         await query.answer("❌ Aapne abhi tak saare channels join nahi kiye hain!", show_alert=True)
 
-# --- 2. SHOW VOUCHERS LIST ---
 async def show_vouchers_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Dynamic Category List with In Stock / Out of Stock Indicators
     keyboard = [
         [InlineKeyboardButton("👑 Shein 1000 per 800 off — 🟢 IN STOCK", callback_data="prod_shein_800")],
         [InlineKeyboardButton("👑 Bigbasket 349 per 160 cashback — 🟢 IN STOCK", callback_data="prod_bb_160")],
@@ -130,7 +120,6 @@ async def show_vouchers_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode="Markdown"
     )
 
-# --- 3. PRODUCT DETAILS & QUANTITY SELECTION ---
 async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -139,7 +128,6 @@ async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("⚠️ This item is currently OUT OF STOCK!", show_alert=True)
         return
 
-    # Sample details for Shein
     unit_price = 114.78
     context.user_data["selected_price"] = unit_price
 
@@ -167,7 +155,6 @@ async def product_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(text=msg, reply_markup=InlineKeyboardMarkup(qty_keyboard), parse_mode="Markdown")
 
-# --- 4. TERMS & CONDITIONS / AGREE ---
 async def show_tnc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -182,7 +169,7 @@ async def show_tnc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "━━━━━━━━━━━━━━━━━━━━━━━\n"
         "All Vouchers Provided are Applicable on Products.\n"
         "Use the Vouchers at the same day when purchased to avoid expiry.\n"
-        " Video recording required during checkout for any warranty claims.\n"
+        "Video recording required during checkout for any warranty claims.\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"**Service:** Shein 1000 per 800 off\n"
         f"**Qty:** {qty} | **Amount:** ₹{total_amount}\n\n"
@@ -196,7 +183,6 @@ async def show_tnc(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(text=tnc_text, reply_markup=InlineKeyboardMarkup(confirm_keyboard), parse_mode="Markdown")
 
-# --- 5. PAYMENT QR GENERATION ---
 async def generate_payment_qr(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -214,7 +200,6 @@ async def generate_payment_qr(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.message.delete()
     await context.bot.send_photo(chat_id=query.from_user.id, photo=qr_url, caption=caption, parse_mode="Markdown")
 
-# Main Function
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
@@ -226,8 +211,7 @@ def main():
     app.add_handler(CallbackQueryHandler(generate_payment_qr, pattern="^pay_now$"))
 
     print("Bot starting...")
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
-         
