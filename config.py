@@ -23,4 +23,6 @@ REQUIRED_CHANNELS = [
     if x.strip()
 ]
 
-REFERRAL_REWARD = int(os.getenv("REFERRAL_REWARD", "10"))
+REFERRAL_REWARD = int(
+    os.getenv("REFERRAL_REWARD", "1")
+)
