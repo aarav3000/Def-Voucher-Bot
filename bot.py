@@ -146,32 +146,10 @@ async def init_settings():
 
 
 async def get_setting(key):
-
-    row = await db._pool.fetchrow(
-        """
-        SELECT value
-        FROM bot_settings
-        WHERE key=$1
-        """,
-        key,
-    )
-
-    return row["value"] if row else ""
-
+    return await db.get_setting(key)
 
 async def set_setting(key, value):
-
-    await db._pool.execute(
-        """
-        INSERT INTO bot_settings(key, value)
-        VALUES($1, $2)
-
-        ON CONFLICT(key)
-        DO UPDATE SET value=EXCLUDED.value
-        """,
-        key,
-        value,
-    )
+    await db.set_setting(key, value)
 
 
 async def get_required_channels():
