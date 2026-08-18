@@ -128,15 +128,6 @@ By purchasing a voucher, you confirm that you have read and accepted these terms
 
 async def init_settings():
 
-    await db._pool.execute(
-        """
-        CREATE TABLE IF NOT EXISTS bot_settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        )
-        """
-    )
-
     defaults = {
         "welcome": DEFAULT_WELCOME,
         "terms": DEFAULT_TERMS,
@@ -145,15 +136,13 @@ async def init_settings():
 
     for key, value in defaults.items():
 
-        await db._pool.execute(
-            """
-            INSERT INTO bot_settings(key, value)
-            VALUES($1, $2)
-            ON CONFLICT(key) DO NOTHING
-            """,
-            key,
-            value,
-        )
+        existing = await db.get_setting(key)
+
+        if existing == "":
+            await db.set_setting(
+                key,
+                value
+            )
 
 
 async def get_setting(key):
