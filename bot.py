@@ -964,4 +964,1358 @@ async def receive_utr(
 
         return
 
-    
+        if not success:
+
+        await message.answer(
+            "❌ This order is no longer accepting UTR."
+        )
+
+        return
+
+    order = await db.get_order(
+        order_id
+    )
+
+    await message.answer(
+        f"⏳ <b>PAYMENT SUBMITTED</b>\n\n"
+        f"🧾 Order: <b>#{order_id}</b>\n"
+        f"💰 Amount: <b>₹{Decimal(order['amount']):.2f}</b>\n"
+        f"🟡 Status: <b>Pending Verification</b>\n\n"
+        f"👨‍💻 Payment will be checked by the admin.\n"
+        f"🎟️ Your voucher will be delivered after verification.",
+        reply_markup=main_menu(),
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Approve",
+                    callback_data=f"approve:{order_id}",
+                ),
+                InlineKeyboardButton(
+                    text="❌ Reject",
+                    callback_data=f"reject:{order_id}",
+                ),
+            ]
+        ]
+    )
+
+    admin_text = (
+        f"🔔 <b>NEW PAYMENT</b>\n\n"
+        f"🧾 Order: <b>#{order_id}</b>\n"
+        f"👤 User ID: <code>{message.from_user.id}</code>\n"
+        f"👤 Username: @{message.from_user.username or 'N/A'}\n"
+        f"🛍️ Product: {order['product_name']}\n"
+        f"🔢 Quantity: {order['qty']}\n"
+        f"💰 Amount: ₹{Decimal(order['amount']):.2f}\n"
+        f"🔢 UTR: <code>{utr}</code>"
+    )
+
+    for admin_id in ADMIN_IDS:
+
+        try:
+
+            await bot.send_message(
+                admin_id,
+                admin_text,
+                reply_markup=keyboard,
+            )
+
+        except Exception:
+
+            logging.exception(
+                "Failed to notify admin %s",
+                admin_id,
+            )
+
+
+# =========================================================
+# MY ORDERS
+# =========================================================
+
+@dp.message(
+    F.text == "🧾 My Orders"
+)
+async def my_orders(
+    message: Message,
+):
+
+    orders = await db.user_orders(
+        message.from_user.id
+    )
+
+    if not orders:
+
+        await message.answer(
+            "🧾 <b>MY ORDERS</b>\n\n"
+            "You don't have any orders yet."
+        )
+
+        return
+
+    text = "🧾 <b>MY ORDERS</b>\n\n"
+
+    for order in orders:
+
+        text += (
+            f"🆔 <b>#{order['id']}</b>\n"
+            f"🛍️ {order['product_name']}\n"
+            f"🔢 Qty: {order['qty']}\n"
+            f"💰 ₹{Decimal(order['amount']):.2f}\n"
+            f"📌 Status: <b>{order['status']}</b>\n"
+            f"━━━━━━━━━━━━━━━━\n"
+        )
+
+    await message.answer(text)
+
+
+# =========================================================
+# RECOVER VOUCHERS
+# =========================================================
+
+@dp.message(
+    F.text == "🎟️ Recover Vouchers"
+)
+async def recover_start(
+    message: Message,
+    state: FSMContext,
+):
+
+    await state.set_state(
+        UserStates.recover_order
+    )
+
+    await message.answer(
+        "🎟️ <b>RECOVER VOUCHERS</b>\n\n"
+        "Send your approved Order ID.\n\n"
+        "Example:\n"
+        "<code>1024</code>"
+    )
+
+
+@dp.message(
+    UserStates.recover_order
+)
+async def recover_order(
+    message: Message,
+    state: FSMContext,
+):
+
+    try:
+
+        order_id = int(
+            message.text.strip()
+        )
+
+    except ValueError:
+
+        await message.answer(
+            "❌ Please send only the Order ID."
+        )
+
+        return
+
+    await state.clear()
+
+    codes = await db.order_codes(
+        order_id,
+        message.from_user.id,
+    )
+
+    if codes is None:
+
+        await message.answer(
+            "❌ Order not found, or the order has not been approved yet."
+        )
+
+        return
+
+    code_text = "\n".join(
+        f"🎟️ <code>{code}</code>"
+        for code in codes
+    )
+
+    await message.answer(
+        f"🎟️ <b>YOUR VOUCHERS</b>\n\n"
+        f"🧾 Order: <b>#{order_id}</b>\n\n"
+        f"{code_text}\n\n"
+        f"🔐 Keep these codes private."
+    )
+
+
+# =========================================================
+# REFER & EARN
+# =========================================================
+
+@dp.message(
+    F.text == "🎁 Refer & Earn"
+)
+async def refer_earn(
+    message: Message,
+):
+
+    points = await db.user_points(
+        message.from_user.id
+    )
+
+    me = await bot.get_me()
+
+    referral_link = (
+        f"https://t.me/"
+        f"{me.username}"
+        f"?start="
+        f"{message.from_user.id}"
+    )
+
+    await message.answer(
+        f"🎁 <b>REFER & EARN</b>\n\n"
+        f"⭐ Your Points: <b>{points}</b>\n\n"
+        f"👥 Invite your friends using your personal referral link.\n\n"
+        f"🎯 When your referred user completes their "
+        f"first successful purchase, you receive:\n\n"
+        f"💎 <b>+{REFERRAL_REWARD} POINT</b>\n\n"
+        f"🔗 <b>Your Referral Link</b>\n"
+        f"<code>{referral_link}</code>\n\n"
+        f"🚀 Share & earn!"
+    )
+
+
+# =========================================================
+# MY POINTS
+# =========================================================
+
+@dp.message(
+    F.text == "💰 My Points"
+)
+async def my_points(
+    message: Message,
+):
+
+    points = await db.user_points(
+        message.from_user.id
+    )
+
+    await message.answer(
+        f"💰 <b>MY POINTS</b>\n\n"
+        f"⭐ Available Points: <b>{points}</b>\n\n"
+        f"🎁 Earn more by referring friends."
+    )
+
+
+# =========================================================
+# SUPPORT
+# =========================================================
+
+@dp.message(
+    F.text == "🆘 Support"
+)
+async def support(
+    message: Message,
+):
+
+    if SUPPORT_USERNAME:
+
+        username = (
+            SUPPORT_USERNAME
+            .replace("@", "")
+            .strip()
+        )
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="💬 Contact Support",
+                        url=f"https://t.me/{username}",
+                    )
+                ]
+            ]
+        )
+
+        await message.answer(
+            "🆘 <b>SUPPORT CENTER</b>\n\n"
+            "Having a problem with your order?\n"
+            "Our support team is ready to help.",
+            reply_markup=keyboard,
+        )
+
+    else:
+
+        await message.answer(
+            "🆘 <b>SUPPORT CENTER</b>\n\n"
+            "Please contact the administrator."
+        )
+
+
+# =========================================================
+# TERMS
+# =========================================================
+
+@dp.message(
+    F.text == "📜 Terms & Conditions"
+)
+async def terms(
+    message: Message,
+):
+
+    text = await get_setting(
+        "terms"
+    )
+
+    await message.answer(
+        text or DEFAULT_TERMS
+    )
+
+
+@dp.callback_query(
+    F.data == "show_terms"
+)
+async def show_terms(
+    call: CallbackQuery,
+):
+
+    text = await get_setting(
+        "terms"
+    )
+
+    await call.message.answer(
+        text or DEFAULT_TERMS
+    )
+
+    await call.answer()
+
+
+# =========================================================
+# HOME
+# =========================================================
+
+@dp.callback_query(
+    F.data == "go_home"
+)
+async def go_home(
+    call: CallbackQuery,
+):
+
+    await call.message.answer(
+        await get_setting("welcome")
+        or DEFAULT_WELCOME,
+        reply_markup=main_menu(),
+    )
+
+    await call.answer()
+
+# =========================================================
+# ADMIN PANEL
+# =========================================================
+
+def admin_keyboard():
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="➕ Add Product",
+                    callback_data="admin:add_product",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📦 Add Voucher Stock",
+                    callback_data="admin:add_stock",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💰 Change Price",
+                    callback_data="admin:change_price",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📊 Products & Stock",
+                    callback_data="admin:products",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💳 Pending Payments",
+                    callback_data="admin:pending",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📢 Manage Channels",
+                    callback_data="admin:channels",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="✏️ Change Welcome",
+                    callback_data="admin:welcome",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📜 Change Terms",
+                    callback_data="admin:terms",
+                )
+            ],
+        ]
+    )
+
+
+@dp.message(Command("admin"))
+async def admin_panel(
+    message: Message,
+):
+
+    if not is_admin(
+        message.from_user.id
+    ):
+        return
+
+    await message.answer(
+        "👑 <b>DEF VOUCHER ADMIN PANEL</b>\n\n"
+        "Select an option:",
+        reply_markup=admin_keyboard(),
+    )
+
+
+# =========================================================
+# ADMIN — ADD PRODUCT
+# =========================================================
+
+@dp.callback_query(
+    F.data == "admin:add_product"
+)
+async def admin_add_product(
+    call: CallbackQuery,
+    state: FSMContext,
+):
+
+    if not is_admin(
+        call.from_user.id
+    ):
+        return
+
+    await state.set_state(
+        AdminStates.add_product
+    )
+
+    await call.message.answer(
+        "➕ <b>ADD PRODUCT</b>\n\n"
+        "Send details in this format:\n\n"
+        "<code>Name | Price | Description</code>\n\n"
+        "Example:\n"
+        "<code>Shein ₹500 | 450 | ₹500 voucher with applicable conditions</code>"
+    )
+
+    await call.answer()
+
+
+@dp.message(
+    AdminStates.add_product
+)
+async def admin_add_product_message(
+    message: Message,
+    state: FSMContext,
+):
+
+    if not is_admin(
+        message.from_user.id
+    ):
+
+        await state.clear()
+        return
+
+    parts = message.text.split(
+        "|",
+        2,
+    )
+
+    if len(parts) != 3:
+
+        await message.answer(
+            "❌ Invalid format.\n\n"
+            "<code>Name | Price | Description</code>"
+        )
+
+        return
+
+    name = parts[0].strip()
+    price_text = parts[1].strip()
+    description = parts[2].strip()
+
+    try:
+
+        price = Decimal(price_text)
+
+        if price <= 0:
+            raise ValueError
+
+    except Exception:
+
+        await message.answer(
+            "❌ Invalid price."
+        )
+
+        return
+
+    product_id = await db.add_product(
+        name,
+        description,
+        price,
+    )
+
+    await state.clear()
+
+    await message.answer(
+        f"✅ <b>PRODUCT ADDED</b>\n\n"
+        f"🆔 ID: <code>{product_id}</code>\n"
+        f"🛍️ {name}\n"
+        f"💰 ₹{price:.2f}"
+    )
+
+
+# =========================================================
+# ADMIN — ADD STOCK
+# =========================================================
+
+@dp.callback_query(
+    F.data == "admin:add_stock"
+)
+async def admin_stock_products(
+    call: CallbackQuery,
+):
+
+    if not is_admin(
+        call.from_user.id
+    ):
+        return
+
+    products = await db.get_products()
+
+    if not products:
+
+        await call.answer(
+            "Create a product first.",
+            show_alert=True,
+        )
+
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=product["name"],
+                    callback_data=(
+                        f"admin_stock:{product['id']}"
+                    ),
+                )
+            ]
+            for product in products
+        ]
+    )
+
+    await call.message.answer(
+        "📦 <b>SELECT PRODUCT</b>",
+        reply_markup=keyboard,
+    )
+
+    await call.answer()
+
+
+@dp.callback_query(
+    F.data.startswith("admin_stock:")
+)
+async def admin_stock_select(
+    call: CallbackQuery,
+    state: FSMContext,
+):
+
+    if not is_admin(
+        call.from_user.id
+    ):
+        return
+
+    product_id = int(
+        call.data.split(":")[1]
+    )
+
+    await state.set_state(
+        AdminStates.add_stock
+    )
+
+    await state.update_data(
+        product_id=product_id
+    )
+
+    await call.message.answer(
+        "📦 <b>ADD VOUCHER CODES</b>\n\n"
+        "Send one code per line.\n\n"
+        "Example:\n"
+        "<code>"
+        "ABC123\n"
+        "XYZ456\n"
+        "DEF789"
+        "</code>"
+    )
+
+    await call.answer()
+
+
+@dp.message(
+    AdminStates.add_stock
+)
+async def admin_stock_message(
+    message: Message,
+    state: FSMContext,
+):
+
+    if not is_admin(
+        message.from_user.id
+    ):
+
+        await state.clear()
+        return
+
+    data = await state.get_data()
+
+    product_id = data["product_id"]
+
+    codes = [
+        code.strip()
+        for code in message.text.splitlines()
+        if code.strip()
+    ]
+
+    if not codes:
+
+        await message.answer(
+            "❌ No voucher codes received."
+        )
+
+        return
+
+    added = await db.add_vouchers(
+        product_id,
+        codes,
+    )
+
+    current_stock = await db.stock_count(
+        product_id
+    )
+
+    await state.clear()
+
+    await message.answer(
+        f"📦 <b>STOCK UPDATED</b>\n\n"
+        f"✅ Added: <b>{added}</b> codes\n"
+        f"📊 Current Stock: <b>{current_stock}</b>"
+    )
+
+
+# =========================================================
+# ADMIN — CHANGE PRICE
+# =========================================================
+
+@dp.callback_query(
+    F.data == "admin:change_price"
+)
+async def admin_price_products(
+    call: CallbackQuery,
+):
+
+    if not is_admin(
+        call.from_user.id
+    ):
+        return
+
+    products = await db.get_products()
+
+    if not products:
+
+        await call.answer(
+            "No products available.",
+            show_alert=True,
+        )
+
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=product["name"],
+                    callback_data=(
+                        f"admin_price:{product['id']}"
+                    ),
+                )
+            ]
+            for product in products
+        ]
+    )
+
+    await call.message.answer(
+        "💰 <b>SELECT PRODUCT</b>",
+        reply_markup=keyboard,
+    )
+
+    await call.answer()
+
+
+@dp.callback_query(
+    F.data.startswith("admin_price:")
+)
+async def admin_price_select(
+    call: CallbackQuery,
+    state: FSMContext,
+):
+
+    if not is_admin(
+        call.from_user.id
+    ):
+        return
+
+    product_id = int(
+        call.data.split(":")[1]
+    )
+
+    await state.set_state(
+        AdminStates.change_price
+    )
+
+    await state.update_data(
+        product_id=product_id
+    )
+
+    await call.message.answer(
+        "💰 <b>NEW PRICE</b>\n\n"
+        "Send the new price.\n\n"
+        "Example: <code>399</code>"
+    )
+
+    await call.answer()
+
+
+@dp.message(
+    AdminStates.change_price
+)
+async def admin_change_price(
+    message: Message,
+    state: FSMContext,
+):
+
+    if not is_admin(
+        message.from_user.id
+    ):
+
+        await state.clear()
+        return
+
+    try:
+
+        price = Decimal(
+            message.text.strip()
+        )
+
+        if price <= 0:
+            raise ValueError
+
+    except Exception:
+
+        await message.answer(
+            "❌ Invalid price."
+        )
+
+        return
+
+    data = await state.get_data()
+
+    await db._pool.execute(
+        """
+        UPDATE products
+        SET price=$1
+        WHERE id=$2
+        """,
+        price,
+        data["product_id"],
+    )
+
+    await state.clear()
+
+    await message.answer(
+        f"✅ <b>PRICE UPDATED</b>\n\n"
+        f"New Price: <b>₹{price:.2f}</b>"
+    )
+
+
+# =========================================================
+# ADMIN — PRODUCTS & STOCK
+# =========================================================
+
+@dp.callback_query(
+    F.data == "admin:products"
+)
+async def admin_products(
+    call: CallbackQuery,
+):
+
+    if not is_admin(
+        call.from_user.id
+    ):
+        return
+
+    products = await db.get_products()
+
+    if not products:
+
+        await call.message.answer(
+            "📊 No products found."
+        )
+
+        await call.answer()
+        return
+
+    text = "📊 <b>PRODUCTS & STOCK</b>\n\n"
+
+    for product in products:
+
+        text += (
+            f"🆔 #{product['id']}\n"
+            f"🛍️ {product['name']}\n"
+            f"💰 ₹{Decimal(product['price']):.2f}\n"
+            f"📦 Stock: {product['stock']}\n"
+            f"━━━━━━━━━━━━━━━━\n"
+        )
+
+    await call.message.answer(
+        text
+    )
+
+    await call.answer()
+
+
+# =========================================================
+# ADMIN — PENDING PAYMENTS
+# =========================================================
+
+def payment_keyboard(order_id):
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Approve",
+                    callback_data=f"approve:{order_id}",
+                ),
+                InlineKeyboardButton(
+                    text="❌ Reject",
+                    callback_data=f"reject:{order_id}",
+                ),
+            ]
+        ]
+    )
+
+
+@dp.callback_query(
+    F.data == "admin:pending"
+)
+async def admin_pending(
+    call: CallbackQuery,
+):
+
+    if not is_admin(
+        call.from_user.id
+    ):
+        return
+
+    orders = await db.pending_orders()
+
+    if not orders:
+
+        await call.message.answer(
+            "💳 <b>Pending Payments</b>\n\n"
+            "No pending payments."
+        )
+
+        await call.answer()
+        return
+
+    for order in orders:
+
+        await call.message.answer(
+            f"💳 <b>PENDING PAYMENT</b>\n\n"
+            f"🧾 Order: <b>#{order['id']}</b>\n"
+            f"👤 User ID: <code>{order['tg_id']}</code>\n"
+            f"👤 Username: @{order['username'] or 'N/A'}\n"
+            f"🛍️ Product: {order['product_name']}\n"
+            f"🔢 Qty: {order['qty']}\n"
+            f"💰 Amount: ₹{Decimal(order['amount']):.2f}\n"
+            f"🔢 UTR: <code>{order['utr']}</code>",
+            reply_markup=payment_keyboard(
+                order["id"]
+            ),
+        )
+
+    await call.answer()
+
+
+# =========================================================
+# ADMIN — APPROVE PAYMENT
+# =========================================================
+
+@dp.callback_query(
+    F.data.startswith("approve:")
+)
+async def approve_order(
+    call: CallbackQuery,
+):
+
+    if not is_admin(
+        call.from_user.id
+    ):
+        return
+
+    order_id = int(
+        call.data.split(":")[1]
+    )
+
+    try:
+
+        order, codes = await db.approve_order(
+            order_id,
+            REFERRAL_REWARD,
+        )
+
+    except ValueError as error:
+
+        await call.answer(
+            str(error),
+            show_alert=True,
+        )
+
+        return
+
+    if not order:
+
+        await call.answer(
+            "❌ Order already processed.",
+            show_alert=True,
+        )
+
+        return
+
+    code_text = "\n".join(
+        f"🎟️ <code>{code}</code>"
+        for code in codes
+    )
+
+    await bot.send_message(
+        order["tg_id"],
+        f"🎉 <b>PAYMENT VERIFIED!</b>\n\n"
+        f"🧾 Order: <b>#{order_id}</b>\n"
+        f"💰 Payment: <b>Verified ✅</b>\n\n"
+        f"🎟️ <b>YOUR VOUCHER CODE(S)</b>\n\n"
+        f"{code_text}\n\n"
+        f"🔐 Keep your codes private.\n\n"
+        f"❤️ Thank you for shopping with us!",
+    )
+
+    await call.message.edit_reply_markup(
+        reply_markup=None
+    )
+
+    await call.answer(
+        "✅ Approved & delivered!"
+    )
+
+
+# =========================================================
+# ADMIN — REJECT PAYMENT
+# =========================================================
+
+@dp.callback_query(
+    F.data.startswith("reject:")
+)
+async def reject_order(
+    call: CallbackQuery,
+):
+
+    if not is_admin(
+        call.from_user.id
+    ):
+        return
+
+    order_id = int(
+        call.data.split(":")[1]
+    )
+
+    success = await db.reject_order(
+        order_id
+    )
+
+    if not success:
+
+        await call.answer(
+            "❌ Order already processed.",
+            show_alert=True,
+        )
+
+        return
+
+    order = await db.get_order(
+        order_id
+    )
+
+    if order:
+
+        await bot.send_message(
+            order["tg_id"],
+            f"❌ <b>PAYMENT REJECTED</b>\n\n"
+            f"🧾 Order: <b>#{order_id}</b>\n\n"
+            f"Your payment could not be verified.\n\n"
+            f"🆘 Please contact support if you believe this is an error.",
+        )
+
+    await call.message.edit_reply_markup(
+        reply_markup=None
+    )
+
+    await call.answer(
+        "❌ Payment rejected."
+        )
+
+# =========================================================
+# ADMIN — CHANNEL MANAGEMENT
+# =========================================================
+
+@dp.callback_query(
+    F.data == "admin:channels"
+)
+async def admin_channels(
+    call: CallbackQuery,
+):
+
+    if not is_admin(call.from_user.id):
+        return
+
+    channels = await get_required_channels()
+
+    if channels:
+        current = "\n".join(
+            f"📢 {channel}"
+            for channel in channels
+        )
+    else:
+        current = "❌ No required channel configured."
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="➕ Set Channel(s)",
+                    callback_data="channel:set",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🗑️ Remove All",
+                    callback_data="channel:remove",
+                )
+            ],
+        ]
+    )
+
+    await call.message.answer(
+        f"📢 <b>CHANNEL SETTINGS</b>\n\n"
+        f"<b>Current channels:</b>\n"
+        f"{current}\n\n"
+        f"⚠️ Channel membership is compulsory.",
+        reply_markup=keyboard,
+    )
+
+    await call.answer()
+
+
+@dp.callback_query(
+    F.data == "channel:set"
+)
+async def channel_set(
+    call: CallbackQuery,
+    state: FSMContext,
+):
+
+    if not is_admin(call.from_user.id):
+        return
+
+    await state.set_state(
+        AdminStates.channel
+    )
+
+    await call.message.answer(
+        "📢 <b>SET REQUIRED CHANNEL(S)</b>\n\n"
+        "Send channel username.\n\n"
+        "Single channel:\n"
+        "<code>@mychannel</code>\n\n"
+        "Multiple channels:\n"
+        "<code>@channel1,@channel2</code>"
+    )
+
+    await call.answer()
+
+
+@dp.message(
+    AdminStates.channel
+)
+async def save_channel(
+    message: Message,
+    state: FSMContext,
+):
+
+    if not is_admin(message.from_user.id):
+
+        await state.clear()
+        return
+
+    channels = [
+        x.strip()
+        for x in message.text.split(",")
+        if x.strip()
+    ]
+
+    if not channels:
+
+        await message.answer(
+            "❌ Please provide at least one channel."
+        )
+
+        return
+
+    for channel in channels:
+
+        if not channel.startswith("@"):
+
+            await message.answer(
+                "❌ Invalid channel format.\n\n"
+                "Example:\n"
+                "<code>@mychannel</code>"
+            )
+
+            return
+
+    await set_setting(
+        "channels",
+        ",".join(channels),
+    )
+
+    await state.clear()
+
+    await message.answer(
+        "✅ <b>CHANNELS UPDATED</b>\n\n"
+        "📢 Users must join the configured "
+        "channel(s) before using the bot."
+    )
+
+
+@dp.callback_query(
+    F.data == "channel:remove"
+)
+async def remove_channels(
+    call: CallbackQuery,
+):
+
+    if not is_admin(call.from_user.id):
+        return
+
+    await set_setting(
+        "channels",
+        "",
+    )
+
+    await call.answer(
+        "✅ Channels removed."
+    )
+
+    await call.message.answer(
+        "📢 Required channel verification "
+        "has been disabled."
+    )
+
+
+# =========================================================
+# ADMIN — CHANGE WELCOME
+# =========================================================
+
+@dp.callback_query(
+    F.data == "admin:welcome"
+)
+async def change_welcome(
+    call: CallbackQuery,
+    state: FSMContext,
+):
+
+    if not is_admin(call.from_user.id):
+        return
+
+    await state.set_state(
+        AdminStates.welcome
+    )
+
+    await call.message.answer(
+        "✏️ <b>CHANGE WELCOME MESSAGE</b>\n\n"
+        "Send the new welcome message.\n\n"
+        "HTML formatting is supported.\n\n"
+        "Example:\n"
+        "<code>&lt;b&gt;Welcome!&lt;/b&gt;</code>"
+    )
+
+    await call.answer()
+
+
+@dp.message(
+    AdminStates.welcome
+)
+async def save_welcome(
+    message: Message,
+    state: FSMContext,
+):
+
+    if not is_admin(message.from_user.id):
+
+        await state.clear()
+        return
+
+    if not message.text:
+
+        await message.answer(
+            "❌ Please send text."
+        )
+
+        return
+
+    await set_setting(
+        "welcome",
+        message.text,
+    )
+
+    await state.clear()
+
+    await message.answer(
+        "✅ <b>WELCOME MESSAGE UPDATED</b>"
+    )
+
+
+# =========================================================
+# ADMIN — CHANGE TERMS
+# =========================================================
+
+@dp.callback_query(
+    F.data == "admin:terms"
+)
+async def change_terms(
+    call: CallbackQuery,
+    state: FSMContext,
+):
+
+    if not is_admin(call.from_user.id):
+        return
+
+    await state.set_state(
+        AdminStates.terms
+    )
+
+    await call.message.answer(
+        "📜 <b>CHANGE TERMS & CONDITIONS</b>\n\n"
+        "Send the new Terms & Conditions.\n\n"
+        "HTML formatting is supported."
+    )
+
+    await call.answer()
+
+
+@dp.message(
+    AdminStates.terms
+)
+async def save_terms(
+    message: Message,
+    state: FSMContext,
+):
+
+    if not is_admin(message.from_user.id):
+
+        await state.clear()
+        return
+
+    if not message.text:
+
+        await message.answer(
+            "❌ Please send text."
+        )
+
+        return
+
+    await set_setting(
+        "terms",
+        message.text,
+    )
+
+    await state.clear()
+
+    await message.answer(
+        "✅ <b>TERMS & CONDITIONS UPDATED</b>"
+    )
+
+
+# =========================================================
+# BOT STARTUP
+# =========================================================
+
+async def main():
+
+    if not BOT_TOKEN:
+        raise RuntimeError(
+            "BOT_TOKEN is missing."
+        )
+
+    if not DATABASE_URL:
+        raise RuntimeError(
+            "DATABASE_URL is missing."
+        )
+
+    await db.init_db(
+        DATABASE_URL
+    )
+
+    await init_settings()
+
+    logging.info(
+        "🚀 DEF Voucher Bot started"
+    )
+
+    try:
+
+        await bot.delete_webhook(
+            drop_pending_updates=True
+        )
+
+        await dp.start_polling(
+            bot
+        )
+
+    finally:
+
+        await db.close_db()
+
+        await bot.session.close()
+
+
+# =========================================================
+# RUN
+# =========================================================
+
+if __name__ == "__main__":
+
+    asyncio.run(main())
