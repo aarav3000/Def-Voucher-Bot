@@ -547,26 +547,37 @@ async def set_utr(
     utr
 ):
 
+    utr = utr.strip()
+
+    if not utr:
+        return False
+
     async with _pool.acquire() as conn:
 
-        result = await conn.execute(
-            """
-            UPDATE orders
+        try:
 
-            SET
-                utr=$1,
-                status='pending_verification'
+            result = await conn.execute(
+                """
+                UPDATE orders
 
-            WHERE id=$2
-            AND tg_id=$3
-            AND status='awaiting_utr'
-            """,
-            utr.strip(),
-            order_id,
-            tg_id
-        )
+                SET
+                    utr=$1,
+                    status='pending_verification'
 
-        return result == "UPDATE 1"
+                WHERE id=$2
+                AND tg_id=$3
+                AND status='awaiting_utr'
+                """,
+                utr,
+                order_id,
+                tg_id
+            )
+
+            return result == "UPDATE 1"
+
+        except asyncpg.UniqueViolationError:
+
+            return False
 
 
 async def get_order(order_id):
