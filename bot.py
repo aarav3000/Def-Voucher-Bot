@@ -2319,3 +2319,22 @@ async def main():
 if __name__ == "__main__":
 
     asyncio.run(main())
+
+# =========================
+# BOT COMPATIBILITY HELPERS
+# =========================
+
+async def user_points(tg_id):
+    return await get_user_points(tg_id)
+
+
+async def user_orders(tg_id):
+    return await get_user_orders(tg_id)
+
+
+async def pending_orders():
+    return await get_pending_orders()
+
+
+async def order_codes(order_id, tg_id):
+    return await get_order_codes(order_id, tg_id)
