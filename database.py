@@ -66,6 +66,10 @@ CREATE TABLE IF NOT EXISTS referral_events (
 CREATE INDEX IF NOT EXISTS idx_vouchers_product_status
 ON vouchers(product_id, status);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_utr_unique
+ON orders(utr)
+WHERE utr IS NOT NULL;
+
 
 CREATE INDEX IF NOT EXISTS idx_orders_user
 ON orders(tg_id);
