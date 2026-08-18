@@ -1306,6 +1306,12 @@ def admin_keyboard():
             ],
             [
                 InlineKeyboardButton(
+                    text="🔄 Product ON / OFF",
+                    callback_data="admin:toggle_products",
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="💳 Pending Payments",
                     callback_data="admin:pending",
                 )
