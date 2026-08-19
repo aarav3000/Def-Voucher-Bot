@@ -931,14 +931,6 @@ async def receive_utr(
 
         return
 
-        if not success:
-
-        await message.answer(
-            "❌ This order is no longer accepting UTR."
-        )
-
-        return
-
     order = await db.get_order(
         order_id
     )
