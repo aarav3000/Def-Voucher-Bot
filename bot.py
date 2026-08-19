@@ -921,10 +921,11 @@ async def receive_utr(
         utr,
     )
 
+    order = await db.get_order(order_id)
+
     await state.clear()
 
     if not success:
-
         await message.answer(
             "❌ This order is no longer accepting UTR."
         )
