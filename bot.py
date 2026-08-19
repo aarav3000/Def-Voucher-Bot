@@ -931,10 +931,6 @@ async def receive_utr(
 
         return
 
-    order = await db.get_order(
-        order_id
-    )
-
     await message.answer(
         f"⏳ <b>PAYMENT SUBMITTED</b>\n\n"
         f"🧾 Order: <b>#{order_id}</b>\n"
