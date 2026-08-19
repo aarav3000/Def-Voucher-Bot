@@ -906,7 +906,6 @@ async def receive_utr(
     order_id = data.get("order_id")
 
     if not order_id:
-
         await state.clear()
 
         await message.answer(
