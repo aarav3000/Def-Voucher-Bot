@@ -545,27 +545,27 @@ async def create_order(
             order_code = generate_order_code()
 
             order_id = await conn.fetchval(
-    """
-    INSERT INTO orders(
-        tg_id,
-        product_id,
-        qty,
-        amount,
-        order_code
-    )
+                """
+                INSERT INTO orders(
+                    tg_id,
+                    product_id,
+                    qty,
+                    amount,
+                    order_code
+                )
 
-    VALUES($1,$2,$3,$4,$5)
+                VALUES($1,$2,$3,$4,$5)
 
-    RETURNING id
-    """,
-    tg_id,
-    product_id,
-    qty,
-    amount,
-    order_code
-)
+                RETURNING id
+                """,
+                tg_id,
+                product_id,
+                qty,
+                amount,
+                order_code
+            )
 
-return order_id, amount, product["name"]
+            return order_id, amount, product["name"]
 
 async def set_utr(
     order_id,
