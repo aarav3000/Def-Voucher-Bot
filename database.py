@@ -565,12 +565,7 @@ order_id = await conn.fetchval(
     order_code
 )
 
-return (
-    order_id,
-    amount,
-    product["name"]
-)
-
+return order_id, amount, product["name"]
 
 async def set_utr(
     order_id,
