@@ -582,6 +582,9 @@ async def set_utr(
 
     if not utr:
         return False
+        
+    if not utr.isdigit():
+        return False
 
     async with _pool.acquire() as conn:
 
@@ -913,7 +916,45 @@ async def get_order_codes(
             for row in rows
         ]
 
+async def get_order_codes_by_code(
+    order_code,
+    tg_id
+):
 
+    async with _pool.acquire() as conn:
+
+        order = await conn.fetchrow(
+            """
+            SELECT *
+            FROM orders
+            WHERE order_code=$1
+            AND tg_id=$2
+            """,
+            order_code,
+            tg_id
+        )
+
+        if not order:
+            return None
+
+        if order["status"] != "approved":
+            return None
+
+        rows = await conn.fetch(
+            """
+            SELECT code
+            FROM vouchers
+            WHERE order_id=$1
+            ORDER BY id
+            """,
+            order["id"]
+        )
+
+        return [
+            row["code"]
+            for row in rows
+        ]
+        
 # =========================
 # REFERRALS
 # =========================
@@ -954,5 +995,8 @@ async def pending_orders():
     return await get_pending_orders()
 
 
-async def order_codes(order_id, tg_id):
-    return await get_order_codes(order_id, tg_id)
+async def order_codes(order_code, tg_id):
+    return await get_order_codes_by_code(
+        order_code,
+        tg_id
+    )
