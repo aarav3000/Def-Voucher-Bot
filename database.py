@@ -544,7 +544,7 @@ async def create_order(
 
             order_code = generate_order_code()
 
-order_id = await conn.fetchval(
+            order_id = await conn.fetchval(
     """
     INSERT INTO orders(
         tg_id,
