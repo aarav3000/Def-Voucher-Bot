@@ -1,6 +1,12 @@
 import asyncio
+import io
 import logging
+import re
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from urllib.parse import quote
+
+import qrcode
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
@@ -15,6 +21,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
     KeyboardButton,
+    BufferedInputFile,
 )
 
 import database as db
@@ -61,6 +68,7 @@ dp = Dispatcher()
 
 class UserStates(StatesGroup):
     custom_quantity = State()
+    payment = State()
     utr = State()
     recover_order = State()
 
@@ -370,6 +378,89 @@ async def verify_membership(
 
 
 # =========================================================
+# PAYMENT / MENU HELPERS
+# =========================================================
+
+MENU_TEXTS = {
+    "🛍️ Buy Vouchers",
+    "🧾 My Orders",
+    "🎟️ Recover Vouchers",
+    "🎁 Refer & Earn",
+    "💰 My Points",
+    "🆘 Support",
+    "📜 Terms & Conditions",
+}
+
+
+def payment_qr_bytes(order_code: str, amount: Decimal) -> bytes:
+    if not UPI_ID:
+        raise RuntimeError("UPI_ID is not configured.")
+
+    amount_text = f"{Decimal(amount):.2f}"
+    upi_uri = (
+        "upi://pay"
+        f"?pa={quote(UPI_ID, safe='')}"
+        f"&pn={quote(UPI_NAME or 'Voucher Store', safe='')}"
+        f"&am={quote(amount_text, safe='')}"
+        "&cu=INR"
+        f"&tr={quote(order_code, safe='')}"
+        f"&tn={quote('Order ' + order_code, safe='')}"
+    )
+
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=12,
+        border=4,
+    )
+    qr.add_data(upi_uri)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+
+    from PIL import Image
+    border = 18
+    canvas = Image.new(
+        "RGB",
+        (image.width + border * 2, image.height + border * 2),
+        "white",
+    )
+    canvas.paste(image, (border, border))
+
+    output = io.BytesIO()
+    canvas.save(output, format="PNG")
+    return output.getvalue()
+
+
+def user_payment_keyboard():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔥 I've Paid", callback_data="payment_paid")],
+            [InlineKeyboardButton(text="🔙 Cancel Payment", callback_data="cancel_payment")],
+        ]
+    )
+
+
+@dp.message(F.text.in_(MENU_TEXTS))
+async def menu_button_router(message: Message, state: FSMContext):
+    await state.clear()
+
+    if message.text == "🛍️ Buy Vouchers":
+        await buy_vouchers(message)
+    elif message.text == "🧾 My Orders":
+        await my_orders(message)
+    elif message.text == "🎟️ Recover Vouchers":
+        await recover_start(message, state)
+    elif message.text == "🎁 Refer & Earn":
+        await refer_earn(message)
+    elif message.text == "💰 My Points":
+        await my_points(message)
+    elif message.text == "🆘 Support":
+        await support(message)
+    elif message.text == "📜 Terms & Conditions":
+        await terms(message)
+
+
+# =========================================================
 # BUY VOUCHERS
 # =========================================================
 
@@ -530,8 +621,7 @@ def quantity_keyboard(
 
     return InlineKeyboardMarkup(
         inline_keyboard=rows
-    )
-
+        )
 
 @dp.callback_query(
     F.data.startswith("product:")
@@ -667,7 +757,7 @@ async def custom_quantity_message(
 
             raise ValueError
 
-    except ValueError:
+    except (ValueError, AttributeError):
 
         await message.answer(
             "❌ Enter a quantity between 1 and 100."
@@ -696,6 +786,14 @@ async def custom_quantity_message(
     product = await db.get_product(
         product_id
     )
+
+    if not product:
+
+        await message.answer(
+            "❌ Product unavailable."
+        )
+
+        return
 
     total = (
         Decimal(product["price"])
@@ -812,7 +910,7 @@ async def show_confirmation(
 
 
 # =========================================================
-# CONFIRM PURCHASE
+# CONFIRM PURCHASE / DYNAMIC QR
 # =========================================================
 
 @dp.callback_query(
@@ -849,34 +947,179 @@ async def confirm_purchase(
 
         return
 
+    order = await db.get_order(
+        order_id
+    )
+
+    if not order:
+
+        await call.answer(
+            "❌ Could not create order.",
+            show_alert=True,
+        )
+
+        return
+
+    order_code = order["order_code"]
+
     await state.set_state(
-        UserStates.utr
+        UserStates.payment
     )
 
     await state.update_data(
-        order_id=order_id
+        order_id=order_id,
+        order_code=order_code,
     )
 
-    await call.message.edit_text(
-        f"🧾 <b>ORDER #{order_id}</b>\n\n"
-        f"🛍️ {product_name}\n"
-        f"🔢 Quantity: <b>{quantity}</b>\n"
-        f"💰 Amount: <b>₹{Decimal(amount):.2f}</b>\n\n"
-        f"━━━━━━━━━━━━━━━━━━\n\n"
-        f"💳 <b>PAYMENT DETAILS</b>\n\n"
-        f"UPI ID:\n"
-        f"<code>{UPI_ID}</code>\n\n"
-        f"Pay exactly:\n"
-        f"<b>₹{Decimal(amount):.2f}</b>\n\n"
-        f"━━━━━━━━━━━━━━━━━━\n\n"
-        f"📤 After payment, send your "
-        f"<b>UTR / Transaction ID</b> here.\n\n"
-        f"⚠️ Never send OTP, UPI PIN or password."
+    try:
+
+        qr_bytes = payment_qr_bytes(
+            order_code,
+            Decimal(amount),
+        )
+
+    except Exception:
+
+        logging.exception(
+            "Failed to generate payment QR"
+        )
+
+        await state.clear()
+
+        await call.answer(
+            "❌ Payment QR could not be generated.",
+            show_alert=True,
+        )
+
+        return
+
+    caption = (
+        "💳 <b>PAYMENT DETAILS</b>\n\n"
+        f"🆔 Order ID: <code>{order_code}</code>\n"
+        f"👑 Service: <b>{product_name}</b>\n"
+        f"🎒 Qty: <b>{quantity}</b>\n"
+        f"💶 Amount: <b>₹{Decimal(amount):.2f}</b>\n\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "📱 <b>HOW TO PAY</b>\n\n"
+        "1️⃣ Scan the QR using any UPI app.\n"
+        "2️⃣ Pay the exact amount shown above.\n"
+        "3️⃣ After payment, tap <b>I've Paid</b>.\n\n"
+        "⏳ QR/payment session is valid for approximately "
+        "<b>10 minutes</b>.\n\n"
+        "⚠️ Never share OTP, UPI PIN or password."
+    )
+
+    await call.message.answer_photo(
+        BufferedInputFile(
+            qr_bytes,
+            filename=f"{order_code}.png",
+        ),
+        caption=caption,
+        reply_markup=user_payment_keyboard(),
     )
 
     await call.answer(
         "🧾 Order created!"
     )
+
+
+# =========================================================
+# I'VE PAID
+# =========================================================
+
+@dp.callback_query(
+    F.data == "payment_paid"
+)
+async def payment_paid(
+    call: CallbackQuery,
+    state: FSMContext,
+):
+
+    current_state = await state.get_state()
+
+    if current_state != UserStates.payment.state:
+
+        await call.answer(
+            "❌ No active payment found.",
+            show_alert=True,
+        )
+
+        return
+
+    data = await state.get_data()
+
+    order_id = data.get("order_id")
+    order_code = data.get("order_code")
+
+    if not order_id or not order_code:
+
+        await state.clear()
+
+        await call.answer(
+            "❌ Payment session expired.",
+            show_alert=True,
+        )
+
+        return
+
+    order = await db.get_order(
+        order_id
+    )
+
+    if not order or order["status"] != "awaiting_utr":
+
+        await state.clear()
+
+        await call.answer(
+            "❌ This payment session is no longer active.",
+            show_alert=True,
+        )
+
+        return
+
+    await state.set_state(
+        UserStates.utr
+    )
+
+    await state.update_data(
+        order_id=order_id,
+        order_code=order_code,
+    )
+
+    await call.message.answer(
+        "🔢 <b>SUBMIT UTR / TRANSACTION ID</b>\n\n"
+        f"🧾 Order: <code>{order_code}</code>\n"
+        f"💰 Amount: <b>₹{Decimal(order['amount']):.2f}</b>\n\n"
+        "Send the transaction/UTR number.\n"
+        "⚠️ <b>Numbers only</b> — letters are not accepted.\n\n"
+        "Example:\n"
+        "<code>123456789012</code>"
+    )
+
+    await call.answer()
+
+
+# =========================================================
+# CANCEL PAYMENT
+# =========================================================
+
+@dp.callback_query(
+    F.data == "cancel_payment"
+)
+async def cancel_payment(
+    call: CallbackQuery,
+    state: FSMContext,
+):
+
+    await state.clear()
+
+    await call.message.answer(
+        "❌ <b>Payment cancelled.</b>\n\n"
+        "Your payment session has been cleared.",
+        reply_markup=main_menu(),
+    )
+
+    await call.answer()
 
 
 # =========================================================
@@ -891,9 +1134,27 @@ async def receive_utr(
     state: FSMContext,
 ):
 
+    if not message.text:
+
+        await message.answer(
+            "❌ Please send the UTR number."
+        )
+
+        return
+
     utr = message.text.strip()
 
-    if len(utr) < 6 or len(utr) > 100:
+    if not utr.isdigit():
+
+        await message.answer(
+            "❌ <b>Invalid UTR.</b>\n\n"
+            "Only numbers are accepted.\n"
+            "Example: <code>123456789012</code>"
+        )
+
+        return
+
+    if len(utr) < 6 or len(utr) > 30:
 
         await message.answer(
             "❌ Please enter a valid UTR / Transaction ID."
@@ -904,12 +1165,15 @@ async def receive_utr(
     data = await state.get_data()
 
     order_id = data.get("order_id")
+    order_code = data.get("order_code")
 
     if not order_id:
+
         await state.clear()
 
         await message.answer(
-            "❌ Order session expired. Please create a new order."
+            "❌ Order session expired. Please create a new order.",
+            reply_markup=main_menu(),
         )
 
         return
@@ -920,20 +1184,24 @@ async def receive_utr(
         utr,
     )
 
-    order = await db.get_order(order_id)
+    order = await db.get_order(
+        order_id
+    )
 
     await state.clear()
 
     if not success:
+
         await message.answer(
-            "❌ This order is no longer accepting UTR."
+            "❌ This order is no longer accepting UTR.",
+            reply_markup=main_menu(),
         )
 
         return
 
     await message.answer(
         f"⏳ <b>PAYMENT SUBMITTED</b>\n\n"
-        f"🧾 Order: <b>#{order_id}</b>\n"
+        f"🧾 Order: <b>{order_code}</b>\n"
         f"💰 Amount: <b>₹{Decimal(order['amount']):.2f}</b>\n"
         f"🟡 Status: <b>Pending Verification</b>\n\n"
         f"👨‍💻 Payment will be checked by the admin.\n"
@@ -958,7 +1226,7 @@ async def receive_utr(
 
     admin_text = (
         f"🔔 <b>NEW PAYMENT</b>\n\n"
-        f"🧾 Order: <b>#{order_id}</b>\n"
+        f"🧾 Order: <b>{order_code}</b>\n"
         f"👤 User ID: <code>{message.from_user.id}</code>\n"
         f"👤 Username: @{message.from_user.username or 'N/A'}\n"
         f"🛍️ Product: {order['product_name']}\n"
@@ -982,8 +1250,7 @@ async def receive_utr(
             logging.exception(
                 "Failed to notify admin %s",
                 admin_id,
-            )
-
+    )
 
 # =========================================================
 # MY ORDERS
@@ -1014,7 +1281,7 @@ async def my_orders(
     for order in orders:
 
         text += (
-            f"🆔 <b>#{order['id']}</b>\n"
+            f"🆔 <b>{order['order_code']}</b>\n"
             f"🛍️ {order['product_name']}\n"
             f"🔢 Qty: {order['qty']}\n"
             f"💰 ₹{Decimal(order['amount']):.2f}\n"
@@ -1037,6 +1304,8 @@ async def recover_start(
     state: FSMContext,
 ):
 
+    await state.clear()
+
     await state.set_state(
         UserStates.recover_order
     )
@@ -1045,7 +1314,8 @@ async def recover_start(
         "🎟️ <b>RECOVER VOUCHERS</b>\n\n"
         "Send your approved Order ID.\n\n"
         "Example:\n"
-        "<code>1024</code>"
+        "<code>SOB-20260820-BB81E8</code>\n\n"
+        "⚠️ Enter the complete Order ID."
     )
 
 
@@ -1057,16 +1327,26 @@ async def recover_order(
     state: FSMContext,
 ):
 
-    try:
-
-        order_id = int(
-            message.text.strip()
-        )
-
-    except ValueError:
+    if not message.text:
 
         await message.answer(
-            "❌ Please send only the Order ID."
+            "❌ Please send your Order ID."
+        )
+
+        return
+
+    order_code = message.text.strip().upper()
+
+    if not re.fullmatch(
+        r"SOB-\d{8}-[A-Z0-9]{6}",
+        order_code,
+    ):
+
+        await message.answer(
+            "❌ <b>Invalid Order ID.</b>\n\n"
+            "Use the complete Order ID.\n"
+            "Example:\n"
+            "<code>SOB-20260820-BB81E8</code>"
         )
 
         return
@@ -1074,14 +1354,15 @@ async def recover_order(
     await state.clear()
 
     codes = await db.order_codes(
-        order_id,
+        order_code,
         message.from_user.id,
     )
 
     if codes is None:
 
         await message.answer(
-            "❌ Order not found, or the order has not been approved yet."
+            "❌ Order not found, or the order has not been approved yet.",
+            reply_markup=main_menu(),
         )
 
         return
@@ -1093,9 +1374,10 @@ async def recover_order(
 
     await message.answer(
         f"🎟️ <b>YOUR VOUCHERS</b>\n\n"
-        f"🧾 Order: <b>#{order_id}</b>\n\n"
+        f"🧾 Order: <b>{order_code}</b>\n\n"
         f"{code_text}\n\n"
-        f"🔐 Keep these codes private."
+        f"🔐 Keep these codes private.",
+        reply_markup=main_menu(),
     )
 
 
@@ -1250,7 +1532,10 @@ async def show_terms(
 )
 async def go_home(
     call: CallbackQuery,
+    state: FSMContext,
 ):
+
+    await state.clear()
 
     await call.message.answer(
         await get_setting("welcome")
@@ -1259,6 +1544,7 @@ async def go_home(
     )
 
     await call.answer()
+
 
 # =========================================================
 # ADMIN PANEL
@@ -1575,8 +1861,7 @@ async def admin_stock_message(
         f"📦 <b>STOCK UPDATED</b>\n\n"
         f"✅ Added: <b>{added}</b> codes\n"
         f"📊 Current Stock: <b>{current_stock}</b>"
-    )
-
+)
 
 # =========================================================
 # ADMIN — CHANGE PRICE
@@ -1695,21 +1980,26 @@ async def admin_change_price(
 
     data = await state.get_data()
 
-    await db._pool.execute(
-        """
-        UPDATE products
-        SET price=$1
-        WHERE id=$2
-        """,
-        price,
+    success = await db.update_product_price(
         data["product_id"],
+        price,
     )
 
     await state.clear()
 
+    if not success:
+
+        await message.answer(
+            "❌ Could not update price."
+        )
+
+        return
+
     await message.answer(
         f"✅ <b>PRICE UPDATED</b>\n\n"
-        f"New Price: <b>₹{price:.2f}</b>"
+        f"New Price: <b>₹{price:.2f}</b>\n\n"
+        "📱 New orders will automatically use "
+        "this price for the dynamic QR."
     )
 
 
@@ -1738,6 +2028,7 @@ async def admin_products(
         )
 
         await call.answer()
+
         return
 
     text = "📊 <b>PRODUCTS & STOCK</b>\n\n"
@@ -1758,6 +2049,7 @@ async def admin_products(
 
     await call.answer()
 
+
 # =========================================================
 # ADMIN — PRODUCT ON / OFF
 # =========================================================
@@ -1769,16 +2061,20 @@ async def admin_toggle_products(
     call: CallbackQuery,
 ):
 
-    if not is_admin(call.from_user.id):
+    if not is_admin(
+        call.from_user.id
+    ):
         return
 
     products = await db.get_products()
 
     if not products:
+
         await call.answer(
             "No products available.",
             show_alert=True,
         )
+
         return
 
     keyboard = InlineKeyboardMarkup(
@@ -1816,7 +2112,9 @@ async def toggle_product(
     call: CallbackQuery,
 ):
 
-    if not is_admin(call.from_user.id):
+    if not is_admin(
+        call.from_user.id
+    ):
         return
 
     product_id = int(
@@ -1828,10 +2126,12 @@ async def toggle_product(
     )
 
     if not product:
+
         await call.answer(
             "❌ Product not found.",
             show_alert=True,
         )
+
         return
 
     new_status = not product["active"]
@@ -1842,16 +2142,19 @@ async def toggle_product(
     )
 
     if not success:
+
         await call.answer(
             "❌ Could not update product.",
             show_alert=True,
         )
+
         return
 
     await call.answer(
         f"{product['name']} → "
         f"{'🟢 ON' if new_status else '🔴 OFF'}"
     )
+
 
 # =========================================================
 # ADMIN — PENDING PAYMENTS
@@ -1897,13 +2200,14 @@ async def admin_pending(
         )
 
         await call.answer()
+
         return
 
     for order in orders:
 
         await call.message.answer(
             f"💳 <b>PENDING PAYMENT</b>\n\n"
-            f"🧾 Order: <b>#{order['id']}</b>\n"
+            f"🧾 Order: <b>{order['order_code']}</b>\n"
             f"👤 User ID: <code>{order['tg_id']}</code>\n"
             f"👤 Username: @{order['username'] or 'N/A'}\n"
             f"🛍️ Product: {order['product_name']}\n"
@@ -1963,6 +2267,8 @@ async def approve_order(
 
         return
 
+    order_code = order["order_code"]
+
     code_text = "\n".join(
         f"🎟️ <code>{code}</code>"
         for code in codes
@@ -1971,12 +2277,13 @@ async def approve_order(
     await bot.send_message(
         order["tg_id"],
         f"🎉 <b>PAYMENT VERIFIED!</b>\n\n"
-        f"🧾 Order: <b>#{order_id}</b>\n"
+        f"🧾 Order: <b>{order_code}</b>\n"
         f"💰 Payment: <b>Verified ✅</b>\n\n"
         f"🎟️ <b>YOUR VOUCHER CODE(S)</b>\n\n"
         f"{code_text}\n\n"
         f"🔐 Keep your codes private.\n\n"
         f"❤️ Thank you for shopping with us!",
+        reply_markup=main_menu(),
     )
 
     await call.message.edit_reply_markup(
@@ -2030,9 +2337,10 @@ async def reject_order(
         await bot.send_message(
             order["tg_id"],
             f"❌ <b>PAYMENT REJECTED</b>\n\n"
-            f"🧾 Order: <b>#{order_id}</b>\n\n"
+            f"🧾 Order: <b>{order['order_code']}</b>\n\n"
             f"Your payment could not be verified.\n\n"
             f"🆘 Please contact support if you believe this is an error.",
+            reply_markup=main_menu(),
         )
 
     await call.message.edit_reply_markup(
@@ -2041,7 +2349,8 @@ async def reject_order(
 
     await call.answer(
         "❌ Payment rejected."
-        )
+    )
+
 
 # =========================================================
 # ADMIN — CHANNEL MANAGEMENT
@@ -2054,17 +2363,22 @@ async def admin_channels(
     call: CallbackQuery,
 ):
 
-    if not is_admin(call.from_user.id):
+    if not is_admin(
+        call.from_user.id
+    ):
         return
 
     channels = await get_required_channels()
 
     if channels:
+
         current = "\n".join(
             f"📢 {channel}"
             for channel in channels
         )
+
     else:
+
         current = "❌ No required channel configured."
 
     keyboard = InlineKeyboardMarkup(
@@ -2103,7 +2417,9 @@ async def channel_set(
     state: FSMContext,
 ):
 
-    if not is_admin(call.from_user.id):
+    if not is_admin(
+        call.from_user.id
+    ):
         return
 
     await state.set_state(
@@ -2130,7 +2446,9 @@ async def save_channel(
     state: FSMContext,
 ):
 
-    if not is_admin(message.from_user.id):
+    if not is_admin(
+        message.from_user.id
+    ):
 
         await state.clear()
         return
@@ -2182,7 +2500,9 @@ async def remove_channels(
     call: CallbackQuery,
 ):
 
-    if not is_admin(call.from_user.id):
+    if not is_admin(
+        call.from_user.id
+    ):
         return
 
     await set_setting(
@@ -2212,7 +2532,9 @@ async def change_welcome(
     state: FSMContext,
 ):
 
-    if not is_admin(call.from_user.id):
+    if not is_admin(
+        call.from_user.id
+    ):
         return
 
     await state.set_state(
@@ -2238,7 +2560,9 @@ async def save_welcome(
     state: FSMContext,
 ):
 
-    if not is_admin(message.from_user.id):
+    if not is_admin(
+        message.from_user.id
+    ):
 
         await state.clear()
         return
@@ -2275,7 +2599,9 @@ async def change_terms(
     state: FSMContext,
 ):
 
-    if not is_admin(call.from_user.id):
+    if not is_admin(
+        call.from_user.id
+    ):
         return
 
     await state.set_state(
@@ -2299,7 +2625,9 @@ async def save_terms(
     state: FSMContext,
 ):
 
-    if not is_admin(message.from_user.id):
+    if not is_admin(
+        message.from_user.id
+    ):
 
         await state.clear()
         return
@@ -2374,22 +2702,3 @@ async def main():
 if __name__ == "__main__":
 
     asyncio.run(main())
-
-# =========================
-# BOT COMPATIBILITY HELPERS
-# =========================
-
-async def user_points(tg_id):
-    return await get_user_points(tg_id)
-
-
-async def user_orders(tg_id):
-    return await get_user_orders(tg_id)
-
-
-async def pending_orders():
-    return await get_pending_orders()
-
-
-async def order_codes(order_id, tg_id):
-    return await get_order_codes(order_id, tg_id)
