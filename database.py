@@ -566,9 +566,9 @@ order_id = await conn.fetchval(
 )
 
 return (
-  order_id,
-  amount,
-  product["name"]
+    order_id,
+    amount,
+    product["name"]
 )
 
 
