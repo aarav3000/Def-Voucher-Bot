@@ -187,29 +187,47 @@ def is_admin(user_id: int) -> bool:
 # =========================================================
 
 def main_menu():
-
     return ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text="🛍️ Buy Vouchers"),
-                KeyboardButton(text="🧾 My Orders"),
-            ],
-            [
-                KeyboardButton(text="🎟️ Recover Vouchers"),
-                KeyboardButton(text="🎁 Refer & Earn"),
-            ],
-            [
-                KeyboardButton(text="💰 My Points"),
-                KeyboardButton(text="🆘 Support"),
+                KeyboardButton(
+                    text="🛍️ Buy Vouchers",
+                    style="success"
+                ),
+                KeyboardButton(
+                    text="🧾 My Orders",
+                    style="primary"
+                ),
             ],
             [
                 KeyboardButton(
-                    text="📜 Terms & Conditions"
+                    text="🎟️ Recover Vouchers",
+                    style="primary"
+                ),
+                KeyboardButton(
+                    text="🎁 Refer & Earn",
+                    style="success"
+                ),
+            ],
+            [
+                KeyboardButton(
+                    text="💰 My Points",
+                    style="primary"
+                ),
+                KeyboardButton(
+                    text="🆘 Support",
+                    style="danger"
+                ),
+            ],
+            [
+                KeyboardButton(
+                    text="📜 Terms & Conditions",
+                    style="primary"
                 ),
             ],
         ],
         resize_keyboard=True,
-        is_persistent=True,
+        is_persistent=True
     )
 
 
