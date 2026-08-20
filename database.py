@@ -1,7 +1,22 @@
 import asyncpg
+import secrets
+import string
+from datetime import datetime
 
 
 _pool = None
+
+def generate_order_code():
+    date_part = datetime.now().strftime("%Y%m%d")
+
+    alphabet = string.ascii_uppercase + string.digits
+
+    random_part = "".join(
+        secrets.choice(alphabet)
+        for _ in range(6)
+    )
+
+    return f"SOB-{date_part}-{random_part}"
 
 
 SCHEMA = """
@@ -46,6 +61,7 @@ CREATE TABLE IF NOT EXISTS orders (
     product_id INTEGER NOT NULL REFERENCES products(id),
     qty INTEGER NOT NULL,
     amount NUMERIC(12,2) NOT NULL,
+    order_code TEXT,
     status TEXT NOT NULL DEFAULT 'awaiting_utr',
     utr TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -91,6 +107,13 @@ async def init_db(database_url):
 
     async with _pool.acquire() as conn:
         await conn.execute(SCHEMA)
+
+        await conn.execute(
+            """
+            ALTER TABLE orders
+            ADD COLUMN IF NOT EXISTS order_code TEXT
+            """
+        )
 
 
 async def close_db():
@@ -519,24 +542,28 @@ async def create_order(
 
             amount = product["price"] * qty
 
-            order_id = await conn.fetchval(
-                """
-                INSERT INTO orders(
-                    tg_id,
-                    product_id,
-                    qty,
-                    amount
-                )
+            order_code = generate_order_code()
 
-                VALUES($1,$2,$3,$4)
+order_id = await conn.fetchval(
+    """
+    INSERT INTO orders(
+        tg_id,
+        product_id,
+        qty,
+        amount,
+        order_code
+    )
 
-                RETURNING id
-                """,
-                tg_id,
-                product_id,
-                qty,
-                amount
-            )
+    VALUES($1,$2,$3,$4,$5)
+
+    RETURNING id
+    """,
+    tg_id,
+    product_id,
+    qty,
+    amount,
+    order_code
+)
 
             return (
                 order_id,
