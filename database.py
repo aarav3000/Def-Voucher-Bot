@@ -80,6 +80,17 @@ CREATE TABLE IF NOT EXISTS referral_events (
     UNIQUE(referrer_id, referred_id)
 );
 
+CREATE TABLE IF NOT EXISTS reward_claims (
+    id BIGSERIAL PRIMARY KEY,
+    tg_id BIGINT NOT NULL REFERENCES users(tg_id),
+    product_id BIGINT NOT NULL REFERENCES products(id),
+    voucher_id BIGINT NOT NULL REFERENCES vouchers(id),
+    reward_name TEXT NOT NULL,
+    voucher_code TEXT NOT NULL,
+    points_spent INTEGER NOT NULL,
+    claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 
 CREATE INDEX IF NOT EXISTS idx_vouchers_product_status
 ON vouchers(product_id, status);
@@ -221,6 +232,99 @@ async def get_user_points(tg_id):
         )
 
         return result or 0
+
+async def claim_shein_reward(tg_id):
+    async with _pool.acquire() as conn:
+        async with conn.transaction():
+
+            user = await conn.fetchrow(
+                """
+                SELECT points
+                FROM users
+                WHERE tg_id=$1
+                FOR UPDATE
+                """,
+                tg_id
+            )
+
+            if not user:
+                return None
+
+            if user["points"] < 9:
+                return None
+
+            product = await conn.fetchrow(
+                """
+                SELECT id, name
+                FROM products
+                WHERE LOWER(name) LIKE '%shein%'
+                  AND active=TRUE
+                LIMIT 1
+                """
+            )
+
+            if not product:
+                return None
+
+            voucher = await conn.fetchrow(
+                """
+                SELECT id, code
+                FROM vouchers
+                WHERE product_id=$1
+                  AND status='available'
+                ORDER BY id
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+                """,
+                product["id"]
+            )
+
+            if not voucher:
+                return None
+
+            await conn.execute(
+                """
+                UPDATE vouchers
+                SET status='sold'
+                WHERE id=$1
+                """,
+                voucher["id"]
+            )
+
+            await conn.execute(
+                """
+                UPDATE users
+                SET points=points-9
+                WHERE tg_id=$1
+                """,
+                tg_id
+            )
+
+            await conn.execute(
+                """
+                INSERT INTO reward_claims (
+                    tg_id,
+                    product_id,
+                    voucher_id,
+                    reward_name,
+                    voucher_code,
+                    points_spent
+                )
+                VALUES ($1,$2,$3,$4,$5,$6)
+                """,
+                tg_id,
+                product["id"],
+                voucher["id"],
+                product["name"],
+                voucher["code"],
+                9
+            )
+
+            return {
+                "reward_name": product["name"],
+                "voucher_code": voucher["code"],
+                "points_spent": 9
+            }
 
 
 # =========================
