@@ -809,6 +809,7 @@ async def approve_order(
                 user
                 and user["referred_by"]
                 and not user["referral_rewarded"]
+                and referral_reward > 0
             ):
 
                 referrer_id = user["referred_by"]
