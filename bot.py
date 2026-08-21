@@ -1409,8 +1409,11 @@ async def recover_order(
 async def refer_earn(
     message: Message,
 ):
-
     points = await db.user_points(
+        message.from_user.id
+    )
+
+    referral_count = await db.get_referral_count(
         message.from_user.id
     )
 
@@ -1423,16 +1426,76 @@ async def refer_earn(
         f"{message.from_user.id}"
     )
 
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🎁 Claim a Reward",
+                    callback_data="claim_reward"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💎 My Claims",
+                    callback_data="my_claims"
+                ),
+                InlineKeyboardButton(
+                    text="🔄 Refresh",
+                    callback_data="refresh_referral"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="✨ Back",
+                    callback_data="referral_back"
+                )
+            ]
+        ]
+    )
+
     await message.answer(
-        f"🎁 <b>REFER & EARN</b>\n\n"
-        f"⭐ Your Points: <b>{points}</b>\n\n"
-        f"👥 Invite your friends using your personal referral link.\n\n"
-        f"🎯 When your referred user completes their "
-        f"first successful purchase, you receive:\n\n"
-        f"💎 <b>+{REFERRAL_REWARD} POINT</b>\n\n"
-        f"🔗 <b>Your Referral Link</b>\n"
+        f"🎁 <b>REFER & EARN</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👥 <b>Joined referrals:</b> {referral_count}\n"
+        f"💎 <b>Available points:</b> {points}\n"
+        f"🎁 <b>Reward:</b> SHEIN ₹1000 → ₹800 OFF\n"
+        f"🔐 <b>Required:</b> 9 points\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🔗 <b>Your personal referral link:</b>\n"
         f"<code>{referral_link}</code>\n\n"
-        f"🚀 Share & earn!"
+        f"💡 Invite a new user and earn "
+        f"<b>1 point</b> when they complete "
+        f"an eligible SHEIN purchase.\n\n"
+        f"🔥 <b>Collect 9 points → Claim your reward!</b>",
+        reply_markup=keyboard
+    )
+
+@dp.callback_query(F.data == "claim_reward")
+async def claim_reward_callback(callback: CallbackQuery):
+    result = await db.claim_shein_reward(
+        callback.from_user.id
+    )
+
+    if not result:
+        await callback.answer(
+            "❌ You need 9 points or reward is unavailable.",
+            show_alert=True
+        )
+        return
+
+    await callback.answer(
+        "🎉 Reward claimed successfully!",
+        show_alert=True
+    )
+
+    await callback.message.answer(
+        f"🎁 <b>REWARD CLAIMED!</b>\n\n"
+        f"🏷️ <b>{result['reward_name']}</b>\n"
+        f"🎟️ <b>Your Voucher Code:</b>\n"
+        f"<code>{result['voucher_code']}</code>\n\n"
+        f"💎 Points used: <b>{result['points_spent']}</b>\n"
+        f"🔥 Enjoy your reward!",
+        reply_markup=main_menu()
     )
 
 
