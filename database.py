@@ -716,6 +716,23 @@ async def approve_order(
             if order["status"] != "pending_verification":
                 return None, []
 
+                    product = await conn.fetchrow(
+            """
+            SELECT name
+            FROM products
+            WHERE id=$1
+            """,
+            order["product_id"]
+        )
+
+        is_shein = (
+            product
+            and "shein" in product["name"].lower()
+        )
+
+        if not is_shein:
+            referral_reward = 0
+
             vouchers = await conn.fetch(
                 """
                 SELECT
