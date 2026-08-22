@@ -838,8 +838,7 @@ async def approve_order(
             if order["status"] != "pending_verification":
                 return None, []
 
-
-        product = await conn.fetchrow(
+            product = await conn.fetchrow(
             """
             SELECT name
             FROM products
