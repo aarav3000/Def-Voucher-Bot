@@ -1498,6 +1498,41 @@ async def claim_reward_callback(callback: CallbackQuery):
         reply_markup=main_menu()
     )
 
+@dp.callback_query(F.data == "my_claims")
+async def my_claims_callback(callback: CallbackQuery):
+    claims = await db.get_reward_claims(
+        callback.from_user.id
+    )
+
+    if not claims:
+        await callback.answer(
+            "📭 No rewards claimed yet.",
+            show_alert=True
+        )
+        return
+
+    text = "💎 <b>MY CLAIMS</b>\n"
+    text += "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+    for claim in claims:
+        text += (
+            f"🎁 <b>{claim['reward_name']}</b>\n"
+            f"🎟️ <code>{claim['voucher_code']}</code>\n"
+            f"💎 Points used: <b>{claim['points_spent']}</b>\n\n"
+        )
+
+    await callback.message.answer(
+        text,
+        reply_markup=main_menu()
+    )
+
+    await callback.answer()
+
+@dp.callback_query(F.data == "refresh_referral")
+async def refresh_referral_callback(callback: CallbackQuery):
+    await callback.answer("🔄 Stats refreshed!")
+    await refer_earn(callback.message)
+
 
 # =========================================================
 # MY POINTS
