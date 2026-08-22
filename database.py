@@ -327,6 +327,23 @@ async def claim_shein_reward(tg_id):
                 "points_spent": 9
             }
 
+async def get_reward_claims(tg_id):
+    async with _pool.acquire() as conn:
+        return await conn.fetch(
+            """
+            SELECT
+                reward_name,
+                voucher_code,
+                points_spent,
+                claimed_at
+            FROM reward_claims
+            WHERE tg_id=$1
+            ORDER BY claimed_at DESC
+            LIMIT 20
+            """,
+            tg_id
+        )
+
 
 # =========================
 # SETTINGS
