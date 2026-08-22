@@ -1531,8 +1531,30 @@ async def my_claims_callback(callback: CallbackQuery):
 @dp.callback_query(F.data == "refresh_referral")
 async def refresh_referral_callback(callback: CallbackQuery):
     await callback.answer("🔄 Stats refreshed!")
-    await refer_earn(callback.message)
 
+    points = await db.user_points(
+        callback.from_user.id
+    )
+
+    referral_count = await db.get_referral_count(
+        callback.from_user.id
+    )
+
+    await callback.message.answer(
+        f"🎁 <b>REFER & EARN</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👥 <b>Joined referrals:</b> {referral_count}\n"
+        f"💎 <b>Available points:</b> {points}\n\n"
+        f"🔥 <b>Collect 9 points → Claim your SHEIN reward!</b>"
+    )
+
+@dp.callback_query(F.data == "referral_back")
+async def referral_back_callback(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "🏠 <b>Main Menu</b>",
+        reply_markup=main_menu()
+    )
 
 # =========================================================
 # MY POINTS
