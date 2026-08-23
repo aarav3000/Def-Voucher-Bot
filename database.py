@@ -1,5 +1,4 @@
 # railway-deploy-fix
-# railway-deploy-fix
 
 import asyncpg
 import secrets
@@ -817,36 +816,36 @@ async def approve_order(
     referral_reward=1
 ):
 
-    async with _pool.acquire() as conn:
+            async with _pool.acquire() as conn:
 
-        async with conn.transaction():
+            async with conn.transaction():
 
-            order = await conn.fetchrow(
-                """
-                SELECT *
-                FROM orders
+                order = await conn.fetchrow(
+                    """
+                    SELECT *
+                    FROM orders
 
-                WHERE id=$1
+                    WHERE id=$1
 
-                FOR UPDATE
-                """,
-                order_id
-            )
+                    FOR UPDATE
+                    """,
+                    order_id
+                )
 
-            if not order:
-                return None, []
+                if not order:
+                    return None, []
 
-            if order["status"] != "pending_verification":
-                return None, []
-                
-        product = await conn.fetchrow(
-            """
-            SELECT name
-            FROM products
-            WHERE id=$1
-            """,
-            order["product_id"]
-        )
+                if order["status"] != "pending_verification":
+                    return None, []
+
+                product = await conn.fetchrow(
+                    """
+                    SELECT name
+                    FROM products
+                    WHERE id=$1
+                    """,
+                    order["product_id"]
+                )
 
         is_shein = (
             product
