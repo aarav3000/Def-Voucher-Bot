@@ -816,36 +816,39 @@ async def approve_order(
     referral_reward=1
 ):
 
-            async with _pool.acquire() as conn:
+        async with _pool.acquire() as conn:
 
-            async with conn.transaction():
+        async with conn.transaction():
 
-                order = await conn.fetchrow(
-                    """
-                    SELECT *
-                    FROM orders
+            order = await conn.fetchrow(
+                """
+                SELECT *
+                FROM orders
+                WHERE id=$1
+                FOR UPDATE
+                """,
+                order_id
+            )
 
-                    WHERE id=$1
+            if not order:
+                return None, []
 
-                    FOR UPDATE
-                    """,
-                    order_id
-                )
+            if order["status"] != "pending_verification":
+                return None, []
 
-                if not order:
-                    return None, []
+            product = await conn.fetchrow(
+                """
+                SELECT name
+                FROM products
+                WHERE id=$1
+                """,
+                order["product_id"]
+            )
 
-                if order["status"] != "pending_verification":
-                    return None, []
-                    
-                product = await conn.fetchrow(
-                    """
-                    SELECT name
-                    FROM products
-                    WHERE id=$1
-                    """,
-                    order["product_id"]
-                )
+            is_shein = (
+                product
+                and "shein" in product["name"].lower()
+            )
 
         is_shein = (
             product
