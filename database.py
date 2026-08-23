@@ -816,7 +816,7 @@ async def approve_order(
     referral_reward=1
 ):
 
-        async with _pool.acquire() as conn:
+    async with _pool.acquire() as conn:
 
         async with conn.transaction():
 
@@ -850,13 +850,8 @@ async def approve_order(
                 and "shein" in product["name"].lower()
             )
 
-        is_shein = (
-            product
-            and "shein" in product["name"].lower()
-        )
-
-        if not is_shein:
-            referral_reward = 0
+            if not is_shein:
+                referral_reward = 0
 
             vouchers = await conn.fetch(
                 """
