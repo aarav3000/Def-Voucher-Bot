@@ -498,13 +498,12 @@ def product_keyboard(products):
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=(
-                        f"{product['name']} — "
-                        f"₹{Decimal(product['price']):.2f} — "
-                        f"{status_text}"
-                    ),
-                    callback_data=f"product:{product['id']}",
-                    style=button_style,
+    text=(
+        f"{product['name']} — "
+        f"{'🟢 IN STOCK' if stock > 0 else '🔴 OUT OF STOCK'}"
+    ),
+    callback_data=f"product:{product['id']}",
+    style="success" if stock > 0 else "danger",
                 )
             ]
         )
