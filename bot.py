@@ -1707,8 +1707,11 @@ async def go_home(
     call: CallbackQuery,
     state: FSMContext,
 ):
-
     await state.clear()
+
+    await call.message.edit_reply_markup(
+        reply_markup=None
+    )
 
     await call.message.answer(
         await get_setting("welcome")
