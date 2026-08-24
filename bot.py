@@ -1457,30 +1457,34 @@ async def refer_earn(
     )
 
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🎁 Claim a Reward",
-                    callback_data="claim_reward"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="💎 My Claims",
-                    callback_data="my_claims"
-                ),
-                InlineKeyboardButton(
-                    text="🔄 Refresh",
-                    callback_data="refresh_referral"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="✨ Back",
-                    callback_data="referral_back"
-                )
-            ]
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="🎁 Claim a Reward",
+                callback_data="claim_reward",
+                style="success",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="💎 My Claims",
+                callback_data="my_claims",
+                style="primary",
+            ),
+            InlineKeyboardButton(
+                text="🔄 Refresh",
+                callback_data="refresh_referral",
+                style="primary",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="✨ Back",
+                callback_data="referral_back",
+                style="danger",
+            )
         ]
+    ]
     )
 
     await message.answer(
