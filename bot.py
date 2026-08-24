@@ -454,8 +454,20 @@ def payment_qr_bytes(order_code: str, amount: Decimal) -> bytes:
 def user_payment_keyboard():
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔥 I've Paid", callback_data="payment_paid")],
-            [InlineKeyboardButton(text="🔙 Cancel Payment", callback_data="cancel_payment")],
+            [
+                InlineKeyboardButton(
+                    text="🔥 I've Paid",
+                    callback_data="payment_paid",
+                    style="success",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Cancel Payment",
+                    callback_data="cancel_payment",
+                    style="danger",
+                )
+            ],
         ]
     )
 
@@ -912,21 +924,24 @@ async def show_confirmation(
                     text="✅ Confirm Purchase",
                     callback_data=(
                         f"confirm:{product_id}:{quantity}"
-                    ),
+                        style="success",
+),
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="📜 Terms & Conditions",
                     callback_data="show_terms",
-                )
+                    style="primary",
+),
             ],
             [
                 InlineKeyboardButton(
                     text="🔙 Back",
                     callback_data=(
                         f"product:{product_id}"
-                    ),
+                        style="danger",
+),
                 )
             ],
         ]
