@@ -598,20 +598,33 @@ def quantity_keyboard(
 
     rows = []
 
-    for quantity in [1, 2, 5, 10]:
+    buttons = []
+
+    for quantity, style in [
+        (1, "success"),
+        (2, "primary"),
+        (5, "success"),
+        (10, "primary"),
+    ]:
 
         if quantity <= stock:
 
-            rows.append(
-                [
-                    InlineKeyboardButton(
-                        text=f"🎟️ Buy {quantity}",
-                        callback_data=(
-                            f"quantity:{product_id}:{quantity}"
-                        ),
-                    )
-                ]
+            buttons.append(
+                InlineKeyboardButton(
+                    text=f"🎟️ Buy {quantity}",
+                    callback_data=(
+                        f"quantity:{product_id}:{quantity}"
+                    ),
+                    style=style,
+                )
             )
+
+            if len(buttons) == 2:
+                rows.append(buttons)
+                buttons = []
+
+    if buttons:
+        rows.append(buttons)
 
     if stock > 10:
 
@@ -622,6 +635,7 @@ def quantity_keyboard(
                     callback_data=(
                         f"custom_quantity:{product_id}"
                     ),
+                    style="primary",
                 )
             ]
         )
@@ -630,14 +644,15 @@ def quantity_keyboard(
         [
             InlineKeyboardButton(
                 text="🔙 Back",
-                callback_data="buy_menu",
+                callback_data="go_home",
+                style="primary",
             )
         ]
     )
 
     return InlineKeyboardMarkup(
         inline_keyboard=rows
-        )
+    )
 
 @dp.callback_query(
     F.data.startswith("product:")
