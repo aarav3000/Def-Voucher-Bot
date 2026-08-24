@@ -580,7 +580,7 @@ async def buy_menu(
     call: CallbackQuery,
 ):
 
-    products = await db.get_products()
+    products = await db.get_active_products()
 
     if not products:
 
