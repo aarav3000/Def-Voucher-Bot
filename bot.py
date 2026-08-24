@@ -483,30 +483,28 @@ async def menu_button_router(message: Message, state: FSMContext):
 # =========================================================
 
 def product_keyboard(products):
-
     rows = []
 
     for product in products:
-
         stock = int(product["stock"])
 
-        status = (
-            "🟢"
-            if stock > 0
-            else "🔴"
-        )
+        if stock > 0:
+            status_text = "🟢 IN STOCK"
+            button_style = "success"
+        else:
+            status_text = "🔴 OUT OF STOCK"
+            button_style = "danger"
 
         rows.append(
             [
                 InlineKeyboardButton(
                     text=(
-                        f"{status} "
-                        f"{product['name']} "
-                        f"• ₹{Decimal(product['price']):.2f}"
+                        f"{product['name']} — "
+                        f"₹{Decimal(product['price']):.2f} — "
+                        f"{status_text}"
                     ),
-                    callback_data=(
-                        f"product:{product['id']}"
-                    ),
+                    callback_data=f"product:{product['id']}",
+                    style=button_style,
                 )
             ]
         )
