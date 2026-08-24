@@ -644,8 +644,8 @@ def quantity_keyboard(
         [
             InlineKeyboardButton(
                 text="🔙 Back",
-                callback_data="go_home",
-                style="primary",
+                callback_data="buy_menu",
+                style="danger",
             )
         ]
     )
