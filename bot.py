@@ -248,8 +248,9 @@ async def channel_keyboard():
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f"📢 Join @{username}",
+                    text=f"📢 @{username}",
                     url=f"https://t.me/{username}",
+                    style="primary",
                 )
             ]
         )
@@ -259,6 +260,7 @@ async def channel_keyboard():
             InlineKeyboardButton(
                 text="✅ Verify Membership",
                 callback_data="verify_membership",
+                style="success",
             )
         ]
     )
