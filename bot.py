@@ -513,6 +513,7 @@ def product_keyboard(products):
             InlineKeyboardButton(
                 text="🔙 Back",
                 callback_data="go_home",
+                style="primary",
             )
         ]
     )
