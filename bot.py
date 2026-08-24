@@ -918,33 +918,33 @@ async def show_confirmation(
     )
 
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="✅ Confirm Purchase",
-                    callback_data=(
-                        f"confirm:{product_id}:{quantity}"
-                        style="success",
-),
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📜 Terms & Conditions",
-                    callback_data="show_terms",
-                    style="primary",
-),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔙 Back",
-                    callback_data=(
-                        f"product:{product_id}"
-                        style="danger",
-),
-                )
-            ],
-        ]
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="✅ Confirm Purchase",
+                callback_data=(
+                    f"confirm:{product_id}:{quantity}"
+                ),
+                style="success",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📜 Terms & Conditions",
+                callback_data="show_terms",
+                style="primary",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Back",
+                callback_data=(
+                    f"product:{product_id}"
+                ),
+                style="danger",
+            )
+        ],
+    ]
     )
 
     await call.message.edit_text(
