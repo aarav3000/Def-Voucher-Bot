@@ -1637,6 +1637,7 @@ async def support(
                     InlineKeyboardButton(
                         text="💬 Contact Support",
                         url=f"https://t.me/{username}",
+                        style="primary",
                     )
                 ]
             ]
