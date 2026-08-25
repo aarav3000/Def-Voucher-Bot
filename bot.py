@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from urllib.parse import quote
 
+import os
+import razorpay
 import qrcode
 
 from aiogram import Bot, Dispatcher, F
@@ -35,6 +37,13 @@ from config import (
     SUPPORT_USERNAME,
     REQUIRED_CHANNELS,
     REFERRAL_REWARD,
+)
+
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
+
+razorpay_client = razorpay.Client(
+    auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)
 )
 
 
