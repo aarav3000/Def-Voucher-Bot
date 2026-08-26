@@ -219,19 +219,10 @@ def main_menu():
                 ),
             ],
             [
-                KeyboardButton(
-                    text="💰 My Points",
-                    style="primary"
-                ),
+                
                 KeyboardButton(
                     text="🆘 Support",
                     style="danger"
-                ),
-            ],
-            [
-                KeyboardButton(
-                    text="📜 Terms & Conditions",
-                    style="primary"
                 ),
             ],
         ],
